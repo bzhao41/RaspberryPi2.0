@@ -1,0 +1,43 @@
+Example commands
+
+Capture an image in jpeg format:
+
+raspistill -o image.jpg
+
+Capture a 5s video in h264 format:
+
+raspivid -o video.h264
+
+Capture a 10s video:
+
+raspivid -o video.h264 -t 10000
+
+Capture a 10s video in demo mode:
+
+raspivid -o video.h264 -t 10000 -d
+
+To see a list of possible options for running raspivid or raspistill, you can run:
+
+raspivid | less
+
+raspistill | less
+
+Use the arrow keys to scroll and type q to exit.
+
+Extended documentation is available.
+
+Note that we recommend that you change SSH password if you are using a camera, in order to prevent unwanted access.
+
+How to stream video from the Raspberry Pi camera over a network
+
+To view the feed on Linux
+
+Install the dependencies by running the following in a terminal:
+
+sudo apt-get install mplayer netcat
+
+Find your IP address by running ifconfig. (Your IP address will be listed in the console output and will probably be of the form 192.168.1.XXX).
+
+Run the following command in a terminal to view the feed using MPlayer:
+
+nc -l -p 5001 | mplayer -fps 31 -cache 1024 -

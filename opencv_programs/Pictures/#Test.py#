@@ -1,0 +1,11 @@
+#!/usr/bin/env python
+
+from subprocess import call
+import cv
+import time
+
+a = 0
+start = time.time()
+while a < 20: 
+    call(["sudo raspistill -t 0 -h 324 -w 432 -o /home/pi/opencv_programs/Pictures/output.jpg"], shell = True)
+    
