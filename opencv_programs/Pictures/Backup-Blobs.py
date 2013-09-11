@@ -41,7 +41,7 @@ def printBlobs(img, min_color, max_color):
     print "average size: " + str(avgSize)
     arr = [] #empty array to keep track fo what blobs to remove
     for x in blobs:
-        if (blobs[x].area < avgSize/3): #if the size of the blob is less than half of the mean size, the blob is added to the array
+        if (blobs[x].area < avgSize): #if the size of the blob is less than half of the mean size, the blob is added to the array
             arr.append(x)
     for x in arr:
         del blobs[x] # the blob is then removed from the dictionary of blobs
@@ -49,7 +49,7 @@ def printBlobs(img, min_color, max_color):
         print str(blobs[x]) + "," + str(blobs[x].area) #prints the blob number and the area of the blob
 
 #Finds blobs in HSV range. Main function for finding blobs
-def findBlobs(img, min_color, max_color, window, renderedwindow, location, area, ratio):
+def findBlobs(img, min_color, max_color, window, renderedwindow, location, area):
     blobs = cvblob.Blobs() #initializes the blobs class
     size = cv.GetSize(img) #gets size of image
 
@@ -78,7 +78,7 @@ def findBlobs(img, min_color, max_color, window, renderedwindow, location, area,
         #Removes blobs that are smaller than a certain size based off of average size
         remv = []
         for x in blobs:
-            if (blobs[x].area < avgsize/ratio):
+            if (blobs[x].area < avgsize/3):
                 remv.append(x)
         for x in remv:
             del blobs[x]
@@ -100,8 +100,7 @@ def findBlobs(img, min_color, max_color, window, renderedwindow, location, area,
         cv.Zero(imgOut)
 
         cvblob.RenderBlobs(labelImg, blobs, img, imgOut, cvblob.CV_BLOB_RENDER_COLOR|cvblob.CV_BLOB_RENDER_CENTROID|cvblob.CV_BLOB_RENDER_BOUNDING_BOX|cvblob.CV_BLOB_RENDER_ANGLE, 1.0) #Marks up the blobs image to put bounding boxes, etc on it
-        cv.ResizeWindow("Window", 640,480)
-        cv.ResizeWindow("Rendered",640,480)
+
         cv.ShowImage("Window" , img) #shows the orininalimage
         cv.ShowImage("Rendered", imgOut) #shows the blobs image
 
@@ -109,13 +108,19 @@ def findBlobs(img, min_color, max_color, window, renderedwindow, location, area,
  
     else:
         print " ...Zero blobs found. \nRedifine color range for better results" #if no blobs were found print an error message
-        cv.ResizeWindow("Window", 640,480)
-        cv.ResizeWindow("Rendered",640,480)
+
         cv.ShowImage("Window", img) #show the original image
 
+#area should be a tupple (x , y, width, height)
+#Crops an image to a specified Range without changing the original image as SetImageROI is wont to do 
+def cropImage(img, croparea):
+    inbetween = cv.CreateImage(cv.GetSize(img), img.depth, img.nChannels)
+    cv.Copy(img, inbetween)
+    cv.SetImageROI(inbetween, croparea)
+    return inbetween
     
 #Find blobs based off of RGB values instead. The RGB is converted into HSV. Location and area are arrays
-def findRGBBlobs(img, color, window, rendered, location, area, ratio, bounds):
+def findRGBBlobs(img, color, window, rendered, location, area):
     R = int(color[0]) 
     G = int(color[1])
     B = int(color[2])
@@ -161,28 +166,28 @@ def findRGBBlobs(img, color, window, rendered, location, area, ratio, bounds):
 
     V = int(maxc + .5)
 
-    #finds a suitable min and max range. bounds can be changed to find larger or smaller ranges and if the numbers are lower than 0 or larger than the max for each value, they are set to either 0 or the max value.
-    
-    minh = H - bounds
+    #finds a suitable min and max range. d can be changed to find larger or smaller ranges and if the numbers are lower than 0 or larger than the max for each value, they are set to either 0 or the max value.
+    d = 20
+    minh = H - d
     if (minh < 0):
         minh = 0
-    maxh = H + bounds
+    maxh = H + d
     if (maxh > 180):
         maxh = 180
-    mins = S - bounds
+    mins = S - d
     if (mins < 0):
         mins = 0
-    maxs = S + bounds
+    maxs = S + d
     if (maxs > 255):
         maxs = 255
-    minv = V - bounds
+    minv = V - d
     if (minv < 0):
         minv = 0
-    maxv = V + bounds
+    maxv = V + d
     if (maxv > 255):
         maxv = 255
 
-    return findBlobs(img, cv.Scalar(minh,mins,minv),cv.Scalar(maxh,maxs,maxv), window,rendered,location, area, ratio)
+    return findBlobs(img, cv.Scalar(minh,mins,minv),cv.Scalar(maxh,maxs,maxv), window,rendered,location, area)
 
 #finds QR codes in an image using zbar library
 def findQRcodes(img):
@@ -204,10 +209,10 @@ def findQRcodes(img):
        else: 
            return None
 #Combination of previous functions to find qr codes based off of blob locations. 
-def qrBlobs(img, color, window, rendered, ratio = 1, dif = 20):
+def qrBlobs(img, color, window, rendered):
     location = [] 
     area = []
-    blobs  = findRGBBlobs(img, color, window, rendered, location, area, ratio, dif)
+    blobs  = findRGBBlobs(img, color, window, rendered, location, area)
     if blobs!=None:
         for blob in blobs:
             print(str(findQRcodes(resize(cropImage(img, (blobs[blob].minx, blobs[blob].miny, blobs[blob].maxx - blobs[blob].minx, blobs[blob].maxy - blobs[blob].miny)), 640, 480))))
@@ -240,36 +245,8 @@ def waitESC():
 #resizes an image
 def resize(img, width, height):
     smallImage = cv.CreateImage((height,width), img.depth, img.nChannels)
-    cv.Resize(img,smallImage,interpolation = cv.CV_INTER_NN)
+    cv.Resize(img,smallImage,interpolation = cv.CV_INTER_CUBIC)
     return smallImage
-
-def multiResize(img, widthlim, heightlim, times):
-    if (widthlim / img.width * img.height > heightlim):
-        maxheight = heightlim
-        maxwidth = heightlim * img.width / img.height
-        
-    elif (heightlim / img.height * img.width > widthlim):
-        maxwidth = widthlim
-        maxheight = widthlim * img.height / img.width 
-    else:
-        maxwidth = widthlim
-        maxheight = heightlim
-
-    widthinter = int((maxwidth - img.width)/times)
-    heightinter = int((maxheight - img.height)/times)
-
-    small = resize(img, img.width + widthinter, img.height + heightinter)
-    for t in range(2, times + 1):
-      small = resize(small, small.width + widthinter, small.height+heightinter)
-      cv.Smooth(small, small, cv.CV_BLUR)
-    return small
-#area should be a tupple (x , y, width, height)
-#Crops an image to a specified Range without changing the original image as SetImageROI is wont to do 
-def cropImage(img, croparea):
-    inbetween = cv.CreateImage(cv.GetSize(img), img.depth, img.nChannels)
-    cv.Copy(img, inbetween)
-    cv.SetImageROI(inbetween, croparea)
-    return inbetween
 
 #finds the distance between two points
 def distance(tup1,tup2):
@@ -278,6 +255,29 @@ def distance(tup1,tup2):
     y1 = int(tup1[1])
     y2 = int(tup2[1])
     return math.sqrt(math.pow(x2-x1,2) + math.pow(y2-y1,2))
+
+#WORK ON THIS
+#finds the distance from the center of the image to the points in an array
+#def distanceFromCenter(img,arr):
+#    w1,h1 = cv.GetSize(img)
+#    for x in range(0, len(arr)):
+#        w2,h2 = arr[int(x)][0], arr[int(x)][1]
+#        return (w1/2 - w2 - .5 , h1/2 - h2 - .5)
+#
+#def directions(tup):
+#    if(int(tup[0]) > 0):
+#        print "go left " + str(abs(int(tup[0]))) + "px"
+#    elif(int(tup[0] < 0)):
+#        print "go right " + str(abs(int(tup[0]))) + "px"
+#    else:
+#        print "Width is centered"
+#    
+#    if(int(tup[1]) > 0):
+#       print "go up " + str(abs(int(tup[1]))) + "px"
+#    elif(int(tup[1] < 0)):
+#        print "go down " + str(abs(int(tup[1]))) + "px"
+#    else:
+#        print "Height is centered"
 
 if __name__=="__main__":
     #server information
@@ -291,28 +291,18 @@ if __name__=="__main__":
     #s.listen(backlog)
 
     #Create windows to show images in
-    #a = cv.NamedWindow("Window", cv.CV_WINDOW_NORMAL)
-    #b = cv.NamedWindow("Rendered" , cv.CV_WINDOW_NORMAL)
-    #cv.MoveWindow("Window", 50, 50)
-    #cv.MoveWindow("Rendered", 690, 50)
+    a = cv.NamedWindow("Window")
+    b = cv.NamedWindow("Rendered")
+    cv.MoveWindow("Window", 50,50)
+    cv.MoveWindow("Rendered", 690, 50)
+    #call(["sudo raspistill -n -t 0 -w 640 -h 480 -o /home/pi/opencv_programs/Pictures/output.jpg"], shell = True)
 
-    #call(["sudo raspistill -n -t 0 -w 640 -h 480  -o /home/pi/opencv_programs/Pictures/output.jpg"], shell = True) #Resolution 640/480
-    #call(["sudo raspistill -n -t 0 -o /home/pi/opencv_programs/Pictures/output.jpg"], shell = True) #Full quality/resolution
-
-    img4 = cv.LoadImage("ocr_pi.png", 1)
-    img =  multiResize(img4, 520, 640,10)
-
-    cv.ShowImage("window",img)
-    cv.ShowImage("re", resize(img4, 520, 520))
-    #pixel = img4[150,50]
-    #print str(pixel)
-    #location = []
-    #area = []
-    #color = cv.Scalar(int(pixel[2]),int(pixel[1]),int(pixel[0]))
-    #color = cv.Scalar(110,0,0)
-    #cv.Circle(img4,(150,50), 50, cv.Scalar(255,255,255))
-    #findRGBBlobs(img4, color, "Window", "Rendered", location, area, 2, 20)
-    #qrBlobs(img4, color, "Window", "Rendered", 1, 20)
+    img4 = cv.LoadImage("test1.png", 1)
+    location = []
+    area = []
+    color = cv.Scalar(1,255,255)
+    #findRGBBlobs(img4, color, "Window", "Rendered", location, area)
+    qrBlobs(img4, color, "Window", "Rendered")
     waitESC()
     #while 1:
     #    print "Ready"
@@ -329,12 +319,8 @@ if __name__=="__main__":
     
 #todo: improve rgbfinder
 #improve qr finding
-#improve multiresizing with erosions and dilations and whatnot to improve the smoothness
+
 
 #Finished:
 #Server is implemented. Can be improved
 #Find blobs now finds multiple blobs instead of just the largest blob
-#MultiResizing
-
-#TODO:
-#Figure out how to resize QR codes better
