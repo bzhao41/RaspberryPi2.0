@@ -14,50 +14,15 @@ import Image
 import socket
 from subprocess import call
 
-#this function is simply just a test function that prints out the blobs that are found instead of showing them
-def printBlobs(img, min_color, max_color):
-    blobs = cvblob.Blobs() #Starts the blob class
-    size = cv.GetSize(img) #gets the size of the img
-
-    hsv = cv.CreateImage(size, cv.IPL_DEPTH_8U, 3) #creates a new image for when the colored image is converted to hsv
-    thresh = cv.CreateImage(size, cv.IPL_DEPTH_8U,1) #creates a new image that is 1 channeled for the thresholding 
-    labelImg = cv.CreateImage(size, cvblob.IPL_DEPTH_LABEL, 1) #creates a image for later use for showing blobs
-   
-    cv.CvtColor(img,hsv,cv.CV_BGR2HSV) #converts the color image to an hsv image
-    cv.InRangeS(hsv, min_color, max_color, thresh) #finds colors between a min range and a max range with a source img and a destination image
-    
-    #these are for corrections to thresholding to remove as many false positives
-    cv.Smooth(thresh, thresh, cv.CV_BLUR) #smooths out the thresholded image
-    cv.Dilate(thresh, thresh) #Dilates the thresholded image
-    cv.Erode(thresh, thresh) #Erodes the thresholded image
-    
-    result = cvblob.Label(thresh, labelImg, blobs) #Don't know what this does exactly but it is used later to print the total number of pixels found
-    
-    
-    numblobs = len(blobs.keys()) #Number of blobs found. blobs is a dictionary with the keys as the number of the blob found and the value as the pointer to the location of the blob
-    
-    avgSize = int(result/numblobs) #Average size of the blobs casted as an int
-
-    print "average size: " + str(avgSize)
-    arr = [] #empty array to keep track fo what blobs to remove
-    for x in blobs:
-        if (blobs[x].area < avgSize/3): #if the size of the blob is less than half of the mean size, the blob is added to the array
-            arr.append(x)
-    for x in arr:
-        del blobs[x] # the blob is then removed from the dictionary of blobs
-    for x in blobs:
-        print str(blobs[x]) + "," + str(blobs[x].area) #prints the blob number and the area of the blob
-
 #Finds blobs in HSV range. Main function for finding blobs
-def findBlobs(img, min_color, max_color, window, renderedwindow, location, area, ratio):
-    blobs = cvblob.Blobs() #initializes the blobs class
+def findBlobs(img, min_color, max_color, originalwindow, renderedwindow, location, area, ratio):
+    blobs = cvblob.Blobs() #creates a dictionary of blobs
     size = cv.GetSize(img) #gets size of image
 
     hsv = cv.CreateImage(size, cv.IPL_DEPTH_8U, 3) #New HSV image for alter
     thresh = cv.CreateImage(size, cv.IPL_DEPTH_8U,1) #New Gray Image for later
     labelImg = cv.CreateImage(size, cvblob.IPL_DEPTH_LABEL, 1) #New Blob image for later
 
-    
     cv.CvtColor(img,hsv,cv.CV_BGR2HSV) #converts image to hsv image
     cv.InRangeS(hsv, min_color, max_color, thresh) #thresholds it
     
@@ -84,8 +49,7 @@ def findBlobs(img, min_color, max_color, window, renderedwindow, location, area,
             del blobs[x]
         
         numblobs = len(blobs.keys()) #gets the number of blobs again after removing some
-        print str(numblobs) + " blobs remaining"
-             
+        print str(numblobs) + " blobs remaining"           
 
         filtered = cv.CreateImage(cv.GetSize(img), cv.IPL_DEPTH_8U, 1) 
         cvblob.FilterLabels(labelImg, filtered, blobs) #Creates a binary image with the blobs formed (imgIn, imgOut, blobs)
@@ -112,10 +76,9 @@ def findBlobs(img, min_color, max_color, window, renderedwindow, location, area,
         cv.ResizeWindow("Window", 640,480)
         cv.ResizeWindow("Rendered",640,480)
         cv.ShowImage("Window", img) #show the original image
-
     
 #Find blobs based off of RGB values instead. The RGB is converted into HSV. Location and area are arrays
-def findRGBBlobs(img, color, window, rendered, location, area, ratio, bounds):
+def findRGBBlobs(img, color, originalwindow, renderedwindow, location, area, ratio, bounds):
     R = int(color[0]) 
     G = int(color[1])
     B = int(color[2])
@@ -182,7 +145,7 @@ def findRGBBlobs(img, color, window, rendered, location, area, ratio, bounds):
     if (maxv > 255):
         maxv = 255
 
-    return findBlobs(img, cv.Scalar(minh,mins,minv),cv.Scalar(maxh,maxs,maxv), window,rendered,location, area, ratio)
+    return findBlobs(img, cv.Scalar(minh,mins,minv),cv.Scalar(maxh,maxs,maxv), originalwindow,renderedwindow,location, area, ratio)
 
 #finds QR codes in an image using zbar library
 def findQRcodes(img):
@@ -200,14 +163,15 @@ def findQRcodes(img):
    #    print 'decoded', symbol.type, 'symbol', '"%s"' % symbol.data
    for symbol in zimage: #Goes through scanned symbols
        if symbol != None: #If the symbol exists
-           return symbol.data # return the symbol
+           return str(symbol.type) + " " + str(symbol.data) # return the symbol
        else: 
            return None
-#Combination of previous functions to find qr codes based off of blob locations. 
-def qrBlobs(img, color, window, rendered, ratio = 1, dif = 20):
+
+#Combination of previous functions to find qr codes based off of blob locations.
+def qrBlobs(img, color, window, rendered, ratio = 1, bounds = 20):
     location = [] 
     area = []
-    blobs  = findRGBBlobs(img, color, window, rendered, location, area, ratio, dif)
+    blobs  = findRGBBlobs(img, color, window, rendered, location, area, ratio, bounds)
     if blobs!=None:
         for blob in blobs:
             print(str(findQRcodes(resize(cropImage(img, (blobs[blob].minx, blobs[blob].miny, blobs[blob].maxx - blobs[blob].minx, blobs[blob].maxy - blobs[blob].miny)), 640, 480))))
@@ -280,7 +244,33 @@ def distance(tup1,tup2):
     return math.sqrt(math.pow(x2-x1,2) + math.pow(y2-y1,2))
 
 if __name__=="__main__":
-    #server information
+    
+    
+    #This creates empty windows so taht instead of having to create windows for images that are shown, they
+    #are shown here and the windows just reload everytime a new image is shown
+    a = cv.NamedWindow("Window", cv.CV_WINDOW_NORMAL)
+    b = cv.NamedWindow("Rendered" , cv.CV_WINDOW_NORMAL)
+    cv.MoveWindow("Window", 50, 50)
+    cv.MoveWindow("Rendered", 690, 50)
+
+    #This call and load piece is for testing out functions with images that the camera takes instead of images that are for testing purposes. The first call is for taking pictures taht are 640 by 480 and the second call is for taking pictures at full resolution, 2592 by 1944 
+    #call(["sudo raspistill -n -t 0 -w 640 -h 480  -o /home/pi/opencv_programs/Pictures/output.jpg"], shell = True) #Resolution 640/480
+    #call(["sudo raspistill -n -t 0 -o /home/pi/opencv_programs/Pictures/output.jpg"], shell = True) #Full quality/resolution
+    #img = cv.LoadImage("output.jpg", 1)
+    
+
+    #This piece is for testing outside of the server. findRGBblobs returns a dictionary of locations and areas and is provided two arrays. color is a scalar that represents rgb values right now. 
+    location = []
+    area = []
+    img = cv.LoadImage("test1.png")
+    color = cv.Scalar(1,255,255)
+    #findRGBBlobs(img4, color, "Window", "Rendered", location, area, 3, 20)
+    qrBlobs(img, color, "Window", "Rendered", 3, 20)
+    waitESC()
+
+    #Server setup - The host and ports are set for the RPi to bind onto. The server waits to
+    #receive information froma  client and when it does receive some sort of information and then it 
+    #proceeds to starting a loop and sending a dictionary of locations and their corresponding blob areas
     #host = '158.130.158.227'
     #port = 5001
     #size = 1024
@@ -289,31 +279,6 @@ if __name__=="__main__":
     #s.bind((host,port))
     #print "bound successful"
     #s.listen(backlog)
-
-    #Create windows to show images in
-    #a = cv.NamedWindow("Window", cv.CV_WINDOW_NORMAL)
-    #b = cv.NamedWindow("Rendered" , cv.CV_WINDOW_NORMAL)
-    #cv.MoveWindow("Window", 50, 50)
-    #cv.MoveWindow("Rendered", 690, 50)
-
-    #call(["sudo raspistill -n -t 0 -w 640 -h 480  -o /home/pi/opencv_programs/Pictures/output.jpg"], shell = True) #Resolution 640/480
-    #call(["sudo raspistill -n -t 0 -o /home/pi/opencv_programs/Pictures/output.jpg"], shell = True) #Full quality/resolution
-
-    img4 = cv.LoadImage("ocr_pi.png", 1)
-    img =  multiResize(img4, 520, 640,10)
-
-    cv.ShowImage("window",img)
-    cv.ShowImage("re", resize(img4, 520, 520))
-    #pixel = img4[150,50]
-    #print str(pixel)
-    #location = []
-    #area = []
-    #color = cv.Scalar(int(pixel[2]),int(pixel[1]),int(pixel[0]))
-    #color = cv.Scalar(110,0,0)
-    #cv.Circle(img4,(150,50), 50, cv.Scalar(255,255,255))
-    #findRGBBlobs(img4, color, "Window", "Rendered", location, area, 2, 20)
-    #qrBlobs(img4, color, "Window", "Rendered", 1, 20)
-    waitESC()
     #while 1:
     #    print "Ready"
     #    client, adress = s.accept()
